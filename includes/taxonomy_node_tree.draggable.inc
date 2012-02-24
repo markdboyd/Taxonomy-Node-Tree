@@ -1,7 +1,6 @@
 <?php
 
 	function taxonomy_node_tree_tid_has_sorted_nodes($tid, $content_filters){
-
 		$has_sort = taxonomy_node_tree_build_sort_query($tid, $content_filters);
 		$sorted_result = db_query($has_sort);
 		$is_sorted = db_fetch_object($sorted_result);

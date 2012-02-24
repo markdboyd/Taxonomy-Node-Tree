@@ -4,6 +4,16 @@
 /* A MFB Joint */
 /* 07/27/10 */
 
+
+/* 
+
+	TODO:
+
+	replace all instaches of end(module_invoke_all()) with some better logic/method or eliminate need for them
+
+*/
+
+
 /* Implementation of hook_init() */
 function taxonomy_node_tree_init() {
 	if(variable_get('use_accordion', 1)){	
@@ -79,7 +89,7 @@ function taxonomy_node_tree_build ( $vid , $options = array() ) {
 	$content_filters['term_content_type'] = ( isset($options['term_content_type']) ) ? $options['term_content_type'] : $config['term_content_type'];	
 
 	//If tid is 0, fetches the entire taxonomy tree, otherwise it fetches the tree below the given tid
-	$taxonomy_tree = taxonomy_get_tree($vid, $tid);
+	$taxonomy_tree = taxonomy_get_tree($vid, $tid);	
 
 	//Since the actual_depth starts at 0 in order to measure depth in the taxonomy structure and 
 	//the levels value starts at 1, a level of 1 equals an actual depth of 0, thus we must add 1 to actual depth
@@ -127,7 +137,7 @@ function taxonomy_node_tree_build ( $vid , $options = array() ) {
 				}						
 			
 			}
-			else{
+			else {
 
 				continue;
 
@@ -209,8 +219,9 @@ function taxonomy_node_tree_get_child_nodes ( $tid, $content_filters = array() )
 	return $node_children;
 }
 
+/* Is this function ultimately necessary? */
 function taxonomy_node_tree_get_term_page_path($tid, $delta){
-  	$term_page_type = variable_get("taxonomy_node_tree_{$delta}_term_content_type", '');
+  $term_page_type = variable_get("taxonomy_node_tree_{$delta}_term_content_type", '');
 
 	if($term_page_type){
 		$term_page_result = db_query('SELECT node.nid FROM node, term_node WHERE term_node.nid = node.nid AND node.type = "%s" AND term_node.tid = "%d"', $term_page_type, $tid);
@@ -244,7 +255,7 @@ function taxonomy_node_tree_output ( $vid, $options, $active = null ) {
 
 	$active_tids = array();
 	$active_tids = taxonomy_node_tree_find_active_trail($taxonomy_node_tree, $vid, $active_nid);
-	
+		
 	$first = reset($taxonomy_node_tree);
 
 	//The actual depth is a zero-based value so we add one for clarity to the end user
@@ -285,7 +296,7 @@ function taxonomy_node_tree_output ( $vid, $options, $active = null ) {
 			$html .= l($term_parent['name'], url($term_page_path, array('absolute' => true)), array('attributes' => array('class' => 'active')));
 		}
 		else{
-			$html .= '<a>' . $term_parent['name'] . '</a>';
+			$html .= '<a href="#">' . $term_parent['name'] . '</a>';
 		}	
 		
 		if($term_parent['child_nodes'] && count($term_parent['child_nodes'])){
@@ -337,7 +348,7 @@ function taxonomy_node_tree_output ( $vid, $options, $active = null ) {
 		$html .= $part;
 	}
 
-	$html .= '<div class="clear"></div></div>';
+	$html .= '</div>';
 
 	return $html;
 	
@@ -408,25 +419,25 @@ function taxonomy_node_tree_get_config($delta = NULL) {
     'parent' => '1-0',
     'admin_title' => '',
     'depth_limit'       => 0,
-	'node_visibility' => 1,
-	'term_filters' => array(),	
-	'content_filters' => array(),	
-	'content_filter_method' => 'exclude',
-	'term_content_type' => '',
-	'collapse_inactive' => 0
+		'node_visibility' => 1,
+		'term_filters' => array(),	
+		'content_filters' => array(),	
+		'content_filter_method' => 'exclude',
+		'term_content_type' => '',
+		'collapse_inactive' => 0
   );
 
   // Get the block configuration options.
   if ($delta) {           
     $config['admin_title'] 	= variable_get("taxonomy_node_tree_{$delta}_admin_title", $config['admin_title']);
-    $config['depth_limit']       	= variable_get("taxonomy_node_tree_{$delta}_depth_limit",       $config['depth_limit']);
-	$config['parent']   = variable_get("taxonomy_node_tree_{$delta}_parent",    $config['parent']);
-	$config['node_visibility']   = variable_get("taxonomy_node_tree_{$delta}_node_visibility",    $config['node_visibility']);
-	$config['term_filters']   = variable_get("taxonomy_node_tree_{$delta}_term_filters",    $config['term_filters']);
-	$config['content_filters']   = variable_get("taxonomy_node_tree_{$delta}_content_filters",    $config['content_filters']);
-	$config['content_filter_method']   = variable_get("taxonomy_node_tree_{$delta}_content_filter_method",    $config['content_filter_method']);	
-	$config['term_content_type']   = variable_get("taxonomy_node_tree_{$delta}_term_content_type",    $config['term_content_type']);	
-	$config['collapse_inactive']   = variable_get("taxonomy_node_tree_{$delta}_collapse_inactive",    $config['collapse_inactive']);	
+    $config['depth_limit']  = variable_get("taxonomy_node_tree_{$delta}_depth_limit",       $config['depth_limit']);
+		$config['parent'] = variable_get("taxonomy_node_tree_{$delta}_parent",    $config['parent']);
+		$config['node_visibility'] = variable_get("taxonomy_node_tree_{$delta}_node_visibility",    $config['node_visibility']);
+		$config['term_filters'] = variable_get("taxonomy_node_tree_{$delta}_term_filters",    $config['term_filters']);
+		$config['content_filters'] = variable_get("taxonomy_node_tree_{$delta}_content_filters",    $config['content_filters']);
+		$config['content_filter_method'] = variable_get("taxonomy_node_tree_{$delta}_content_filter_method",    $config['content_filter_method']);	
+		$config['term_content_type'] = variable_get("taxonomy_node_tree_{$delta}_term_content_type",    $config['term_content_type']);	
+		$config['collapse_inactive'] = variable_get("taxonomy_node_tree_{$delta}_collapse_inactive",    $config['collapse_inactive']);	
   }
 
   return $config;
@@ -434,7 +445,7 @@ function taxonomy_node_tree_get_config($delta = NULL) {
 
 function taxonomy_node_tree_get_active_nid(){
 	if (arg(0) == 'node' && is_numeric(arg(1))) {
-	  	$active_nid = arg(1);
+	  $active_nid = arg(1);
 	}
 	else{
 		$active_q = explode('/', $_GET['q']);
@@ -445,6 +456,7 @@ function taxonomy_node_tree_get_active_nid(){
 
 /* Provides active-trail classes based on the position of the current node in the taxonomy tree */
 function taxonomy_node_tree_find_active_trail( $taxonomy_node_tree, $vid, $active_nid ){
+	if ( !is_array($taxonomy_node_tree) ) $taxonomy_node_tree = array();
 
 	array_walk_recursive($taxonomy_node_tree, 'taxonomy_node_tree_highlight_active_node', $active_nid);
 
@@ -506,78 +518,3 @@ function taxonomy_node_tree_highlight_active_node($item, $key, $active_nid){
 		}
 	}	
 }
-
-/* Builds a tree of vocabularies */
-function taxonomy_node_tree_build_vocab_tree ( $vid, $include = array() ){
-	$vocabs = taxonomy_get_vocabularies();
-
-	$vocab_tree = array();
-
-	foreach($vocabs as $vocab){
-		if(isset($include) && count($include)){
-			if(in_array($vocab->vid, $include)){
-				$vocab_tree[$vocab->vid] = $vocab;	
-
-				if($vid == $vocab->vid){
-					$vocab_tree[$vocab->vid]->in_vocabulary_active_trail = true;	
-				}			
-			}	
-			else{
-				continue;
-			}
-		}	
-		else{
-			$vocab_tree[$vocab->vid] = $vocab;
-
-			if($vid == $vocab->vid){
-				$vocab_tree[$vocab->vid]->in_vocabulary_active_trail = true;	
-			}			
-		}			
-	}
-
-	return $vocab_tree;
-}
-
-function taxonomy_node_tree_vocab_tree_output ( $vid, $include = array() ){
-	$vocab_tree = taxonomy_node_tree_build_vocab_tree($vid, $include);
-
-	$html = '<ul class="vocab-tree">';
-	
-	foreach($vocab_tree as $vocab){
-		$class = '';
-
-		$vocab_info = taxonomy_node_tree_get_vocab_path($vocab->vid);
-
-		$vocab_path = $vocab_info['path'];
-		$vocab_name = $vocab_info['name'];
-		
-		if($vocab->in_vocabulary_active_trail){
-			$class = ' active-trail';
-		}
-
-		$html .= '<li class="vocab-item' . $class . '">';
-		$html .= l($vocab_name, $vocab_path);
-		$html .= '</li>';	
-	}
-
-	$html .= '</ul>';
-
-	return $html;
-}
-
-function taxonomy_node_tree_get_vocab_path($vid){
-	$results = array();
-
-	$vocab = taxonomy_vocabulary_load($vid);
-	
-	$results['path'] = end(module_invoke_all('taxonomy_node_tree_get_vocab_path', $vid));
-	$results['name'] = $vocab->name;
-
-	return $results;
-}
-
-/* Misc functions to integrate with Context Admin Links */
-if(module_exists('context_admin_links')){
-  	module_load_include('inc', 'taxonomy_node_tree', 'includes/taxonomy_node_tree.context_admin_links');
-}
-?>
