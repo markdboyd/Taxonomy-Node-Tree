@@ -1,0 +1,5 @@
+name = Taxonomy Node Tree
+description = Reads through your taxonomy and builds a tree of nodes attached to each term
+dependencies[] = taxonomy
+package = Core - optional
+core = 6.x

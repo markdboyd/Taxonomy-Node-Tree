@@ -1,0 +1,115 @@
+/* TAXONOMY NODE TREE */
+ul.tree-root { background: #ffffff; }
+ul.tree-root li {
+  border-bottom: #d0ccc6 1px solid;
+  padding: 5px 0;
+}
+ul.tree-root li a {
+  cursor: pointer;
+  padding: 0 5px;
+  font-size: 14px;
+  text-decoration: none;
+  color: #000000;
+}
+
+/* Expanded Accordion */
+/*
+ul.tree-root li.expanded-trail {
+  padding: 5px 0 0;
+  border: none;
+}
+*/
+ul.tree-root > li.expanded-trail{
+/*  background: #7E7B6C;	*/
+}
+ul.tree-root > li.expanded-trail > a{
+/*  color: #fff; */
+  background: url('/sites/all/modules/taxonomy_node_tree/css/images/taxonomy-expanded.png') no-repeat right center;
+  padding-right: 10px;
+}
+ul.tree-root ul.node-tree li.active-node a.active{
+/*  color: #fff; */
+}
+ul.tree-root li.expanded-trail ul{
+  background: #fff;
+}
+ul.tree-root li.expanded-trail ul.node-tree{
+  padding-bottom: 0;
+}
+ul.tree-root li.expanded-trail ul.term-tree{
+  margin-top: 5px;
+}
+ul.tree-root li.expanded-trail li.has-children ul.term-tree{
+  margin: 0;
+}
+ul.tree-root li.expanded-trail ul.term-tree li.has-children ul.node-tree li{
+  border-bottom: 1px solid #D0CCC6;
+}
+ul.tree-root li.expanded-trail ul.term-tree li.expanded-trail ul.term-tree li.expanded-trail ul li.no-children{
+  margin-top: 5px;
+  border-top: 1px solid #D0CCC6;
+}
+
+/* Active Trail */
+ul.tree-root li.active-trail a{
+  color: #961517;
+}
+ul.tree-root li.active-trail li a,
+ul.tree-root ul.node-tree li a{
+  background: none;
+  color: #000;
+  padding: 0 5px;
+}
+ul.tree-root li.active-trail ul.term-tree{
+  margin-top: 5px;
+}
+ul.tree-root ul.node-tree li.active-node{
+  background: #7E7B6C;
+}
+ul.tree-root ul.node-tree li.active-node a.active{
+  color: #fff;
+}
+
+/* Node Tree */
+ul.tree-root ul.node-tree li {
+  border: none;
+  border-top: 1px solid #D0CCC6;
+}
+ul.tree-root ul.node-tree li a {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #89867f;
+  text-decoration: none;
+}
+ul.term-tree li.has-children ul.node-tree{
+  margin-top: 5px;
+  border-bottom: 1px solid #D0CCC6;
+}
+ul.term-tree li.has-children ul.term-tree{
+  margin: 0;
+}
+ul.term-tree li.no-children ul li.has-children ul.node-tree{
+  border: none;
+}
+
+/* Level 2 */
+ul.tree-root li.no-children ul.level-2{
+  border-top: 1px solid #D0CCC6;
+}
+ul.tree-root li ul.level-2 li a{
+  padding-left: 10px;
+}
+ul.tree-root li ul.level-2 li.has-children ul.node-tree li{
+  padding-bottom: 5px;
+}
+
+/* Level 3 */
+ul.tree-root li ul.level-3 li a{
+  padding-left: 15px;
+}
+
+/* Level 4 */
+ul.tree-root li ul.level-4 li a{
+  padding-left: 20px;
+}
+
