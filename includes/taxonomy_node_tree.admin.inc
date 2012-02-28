@@ -124,12 +124,11 @@ function taxonomy_node_tree_delete_submit($form, &$form_state) {
   variable_set('taxonomy_node_tree_block_ids', $block_ids);
   variable_del("taxonomy_node_tree_{$delta}_admin_title");
   variable_del("taxonomy_node_tree_{$delta}_parent");
-  variable_del("taxonomy_node_tree_{$delta}_depth_limit");
+  variable_del("taxonomy_node_tree_{$delta}_max_depth");  
   variable_del("taxonomy_node_tree_{$delta}_node_visibility");
   variable_del("taxonomy_node_tree_{$delta}_term_filters");
   variable_del("taxonomy_node_tree_{$delta}_content_filters");
-  variable_del("taxonomy_node_tree_{$delta}_content_filter_method");
-  variable_del("taxonomy_node_tree_{$delta}_term_content_type");
+  variable_del("taxonomy_node_tree_{$delta}_content_filter_method");  
   variable_del("taxonomy_node_tree_{$delta}_collapse_inactive");
   
   db_query("DELETE FROM {blocks} WHERE module = 'taxonomy_node_tree' AND delta = %d", $delta);
@@ -174,8 +173,7 @@ function _taxonomy_node_tree_block_configure($delta) {
  * @return
  *   array The form in Form API format.
  */
-function taxonomy_node_tree_configure_form(&$form_state) {		
-		
+function taxonomy_node_tree_configure_form(&$form_state) {				
 	$config = array();
 
 	// Merge in the default configuration.
@@ -187,13 +185,13 @@ function taxonomy_node_tree_configure_form(&$form_state) {
 	// Get all term options
 	$vocabs = taxonomy_get_vocabularies();
 
-	foreach($vocabs as $vocab){
-		$term_tree = taxonomy_node_tree_build($vocab->vid);
+	foreach($vocabs as $vocab){	
+		$term_tree = taxonomy_node_tree_build($vocab->vid);		
 		$term_options[$vocab->name] = taxonomy_node_tree_build_term_options($vocab->vid, $term_tree);
 		$exclude_options[$vocab->name] = taxonomy_node_tree_build_term_options($vocab->vid, $term_tree, false);		
 	}
     
-	//Get all content type options
+	// Get all content type options
 	$content_options = array();
 
 	$content_types = db_query('SELECT type, name from node_type');
@@ -230,10 +228,10 @@ function taxonomy_node_tree_configure_form(&$form_state) {
 		'#attributes' => array('class' => 'taxonomy-node-tree-parent'),
 	);
 
-	$form['tree_context']['depth_limit'] = array(
+	$form['tree_context']['max_depth'] = array(
 		'#type' => 'select',
 		'#title' => t('Maximum depth'),
-		'#default_value' => $config['depth_limit'],
+		'#default_value' => $config['max_depth'],
 		'#options' => array(
 		  '1'  => '1',
 		  '2'  => '2',
@@ -253,7 +251,7 @@ function taxonomy_node_tree_configure_form(&$form_state) {
 		'#type' => 'checkbox',
 		'#title' => t('Collapse inactive portions of the tree?'),
 		'#default_value' => $config['collapse_inactive'],
-	);
+	);   
 
     $form['node_visibility'] = array(
       '#type' => 'fieldset',
@@ -268,7 +266,7 @@ function taxonomy_node_tree_configure_form(&$form_state) {
 	  '#title' => t('Include nodes in this taxonomy tree'),
  	  '#default_value' => $config['node_visibility'],
 	  '#description' => t('If you check this box, a list of nodes for each taxonomy term will be included in the output, otherwise the node will be ignored and the tree will just contain taxonomy terms.'),
-	);
+	);	
 
     $form['term_visibility'] = array(
       '#type' => 'fieldset',
@@ -313,44 +311,28 @@ function taxonomy_node_tree_configure_form(&$form_state) {
 		),			
 	);
 
-	$form['content_visibility']['term_content_type'] = array(
-		'#type' => 'select',		
-		'#title' => t('Use this content type as the landing page for a term in this tree'),			
-		'#default_value' => $config['term_content_type'],
-		'#options' => array('' => t('None')) + $content_options,	
-      	'#description' => t('Choose what content type you want to use to build custom landing pages for your taxonomy terms.  This content type will automatically be exluded from the tree, since the actual terms in the tree will link to these nodes.'),
-	);
-
 	$form['taxonomy-node-tree-block-wrapper-close'] = array('#value' => '</div>');
 
 	return $form;
 
 }
 
-function taxonomy_node_tree_build_term_options ( $vid = NULL, $tree , $include_vid = true) {
-
-	static $recursion_count = 0;
-
+function taxonomy_node_tree_build_term_options ( $vid, $tree , $include_vid = true, $depth = 0) {		
 	$term_options = array();
-	
-	$name_prefix = '';
-
-	if($include_vid && $recursion_count == 0){
+		
+	if($include_vid){
 		$term_options[$vid . '-0'] = 'Root of the tree';
 	}
 
 	$i = 0;
-
-	$first = reset($tree);
-	$depth = $first['actual_depth'];
-
+	$name_prefix = '';
 	while($i <= $depth){
 		$name_prefix .= '--';
 		$i++;
 	}
 	
 	foreach($tree as $term){
-		$tid = $term['tid'];
+		$tid = $term->tid;
 		
 		if($include_vid){
 			$starting_level = $vid . '-' . $tid;		
@@ -359,13 +341,11 @@ function taxonomy_node_tree_build_term_options ( $vid = NULL, $tree , $include_v
 			$starting_level = $tid;				
 		}
 	
-		$term_options[$starting_level] = $name_prefix . $term['name'];
+		$term_options[$starting_level] = $name_prefix . $term->name;
 
-		if($term['child_terms']){
-			$recursion_count++;
+		if($term->children){			
 			$term_options_more = array();
-			$term_options_more = taxonomy_node_tree_build_term_options($vid, $term['child_terms'], $include_vid);
-			$recursion_count--;
+			$term_options_more = taxonomy_node_tree_build_term_options($vid, $term->children, $include_vid, $depth + 1);			
 			if(is_array($term_options_more)){
 				$term_options = $term_options + $term_options_more;
 			}
@@ -381,13 +361,10 @@ function taxonomy_node_tree_build_term_options ( $vid = NULL, $tree , $include_v
 function _taxonomy_node_tree_block_save($delta, $edit) {
   variable_set("taxonomy_node_tree_{$delta}_admin_title", $edit['admin_title']);
   variable_set("taxonomy_node_tree_{$delta}_parent", $edit['parent']);
-  variable_set("taxonomy_node_tree_{$delta}_depth_limit", $edit['depth_limit']);
+  variable_set("taxonomy_node_tree_{$delta}_max_depth", $edit['max_depth']);  
   variable_set("taxonomy_node_tree_{$delta}_node_visibility", $edit['include_nodes']);
   variable_set("taxonomy_node_tree_{$delta}_term_filters", $edit['term_filters']);
   variable_set("taxonomy_node_tree_{$delta}_content_filters", $edit['content_filters']);
-  variable_set("taxonomy_node_tree_{$delta}_content_filter_method", $edit['content_filter_method']);
-  variable_set("taxonomy_node_tree_{$delta}_term_content_type", $edit['term_content_type']);
+  variable_set("taxonomy_node_tree_{$delta}_content_filter_method", $edit['content_filter_method']);  
   variable_set("taxonomy_node_tree_{$delta}_collapse_inactive", $edit['collapse_inactive']);
 }
-
-?>

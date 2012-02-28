@@ -4,15 +4,11 @@
 /* A MFB Joint */
 /* 07/27/10 */
 
-
-/* 
-
-	TODO:
-
-	replace all instaches of end(module_invoke_all()) with some better logic/method or eliminate need for them
-
+/*
+	Ensure max depth setting works
+	Ensure starting at a specific term works
+	test term & content filters 
 */
-
 
 /* Implementation of hook_init() */
 function taxonomy_node_tree_init() {
@@ -73,79 +69,181 @@ function taxonomy_node_tree_menu() {
 /* Recursively iterates through the taxonomy tree, either from the beginning or */
 /* starting at a certain level, and builds a nested tree of terms and the */
 /* nodes attached to them */
-function taxonomy_node_tree_build ( $vid , $options = array() ) {	
-	static $actual_depth = 0;	
+function taxonomy_node_tree_build ( $terms = array(), $options = array(), $parents_index = array(), $current_depth = 0 ) {		
 
-	//Get default configuration settings
+	// Get default configuration settings
 	$config = taxonomy_node_tree_get_config();	
 
-	//Get settings from options array, otherwise use defaults from config
-	$tid = ( isset($options['parent']) ) ? $options['parent'] : 0;	
+	// Get settings from options array, otherwise use defaults from config
+	$parent = ( isset($options['parent']) ) ? $options['parent'] : 0;	
+	$max_depth = ( isset($options['max_depth']) ) ? $options['max_depth'] : $config['max_depth'];	
 	$node_visibility = ( isset($options['node_visibility']) ) ? $options['node_visibility'] : $config['node_visibility'];	
-	$depth_limit = ( isset($options['depth_limit']) ) ? $options['depth_limit'] : $config['depth_limit'];	
 	$term_filters = ( isset($options['term_filters']) ) ? $options['term_filters'] : $config['term_filters'];	
 	$content_filters['filters'] = ( isset($options['content_filters']) ) ? $options['content_filters'] : $config['content_filters'];	
-	$content_filters['method'] = ( isset($options['content_filter_method']) ) ? $options['content_filter_method'] : $config['content_filter_method'];	
-	$content_filters['term_content_type'] = ( isset($options['term_content_type']) ) ? $options['term_content_type'] : $config['term_content_type'];	
+	$content_filters['method'] = ( isset($options['content_filter_method']) ) ? $options['content_filter_method'] : $config['content_filter_method'];		
 
-	//If tid is 0, fetches the entire taxonomy tree, otherwise it fetches the tree below the given tid
-	$taxonomy_tree = taxonomy_get_tree($vid, $tid);	
+	// if we don't have a set of terms to work with, get the initial tree
+  if (is_string($terms) || is_int($terms)) {  	
+  	$vid = $terms;
+    $terms = taxonomy_get_tree($vid, $parent);    
+  }
 
-	//Since the actual_depth starts at 0 in order to measure depth in the taxonomy structure and 
-	//the levels value starts at 1, a level of 1 equals an actual depth of 0, thus we must add 1 to actual depth
-	//in order to be able to compare them
-	$adjusted_depth = $actual_depth + 1;	
-			
-	//If a value of 0 is passed for the number of levels deep the tree should go, it will always pass through, otherwise
-	//the depth of the current level must be less than the depth specified
-	if($depth_limit == 0 || $adjusted_depth <= $depth_limit){
+  // iterate over set of terms
+  foreach ($terms as $term) {
+    foreach ($term->parents as $parent_tid) {
+      if ($parent_tid == $parent) {
+        $tree[$term->tid] = $term;
+      }
+      else {
+        $parents_index[$parent_tid][$term->tid] = $term;
+      }
+    }
+  }
 
-		foreach($taxonomy_tree as $taxonomy_root){
-			unset($tid);    
+  foreach ($tree as &$term) {
+    if (isset($parents_index[$term->tid]) && (is_null($max_depth) || $current_depth < $max_depth)) {
+    	$options['parent'] = $term->tid;
+      $term->children = taxonomy_node_tree_build($parents_index[$term->tid], $options, $parents_index, $current_depth + 1);	      
+    }
 
-			$tid = $taxonomy_root->tid;
-			$vid = $taxonomy_root->vid;
+		if (taxonomy_node_tree_count_direct_node_children($term->tid, $term->vid)) {										
+			$term->nodes = taxonomy_node_tree_get_term_nodes($term->tid, $content_filters);
+		}	    
+  }
+  
+  return $tree;
+}
 
-			$relative_depth = $taxonomy_root->depth;			
+/* Generates nested ul - li markup for listing children nodes and terms based on taxonomy structure */
+function taxonomy_node_tree_output ( $vid, $options, $depth = 0 ) {		
+	$tree = taxonomy_node_tree_build($vid, $options);	
 
-			if($relative_depth == 0 && !in_array($tid, $term_filters)){
-
-				$taxonomy_node_tree[$tid]['name'] = $taxonomy_root->name;	
-
-				$taxonomy_node_tree[$tid]['tid'] = $tid;	
-
-				$taxonomy_node_tree[$tid]['description'] = $taxonomy_root->description;
-
-				$taxonomy_node_tree[$tid]['actual_depth'] = $actual_depth;			
-
-				$vocabs = taxonomy_get_vocabularies();
-				$vocab_name = $vocabs[$vid]->name;
-
-				$taxonomy_node_tree[$tid]['vocab_name'] = $vocab_name;
-
-				$taxonomy_node_tree[$tid]['term_content_type'] = $content_filters['term_content_type'];
-
-				if(taxonomy_node_tree_count_direct_node_children ( $tid, $vid ) && $node_visibility > 0){							
-					$taxonomy_node_tree[$tid]['child_nodes'] = taxonomy_node_tree_get_child_nodes($tid, $content_filters);
-				}
-
-				if(count(taxonomy_get_children($tid, $vid))){			
-					$options['parent'] = $tid;
-					$actual_depth++;
-					$taxonomy_node_tree[$tid]['child_terms'] = taxonomy_node_tree_build($vid, $options);	
-					$actual_depth--;
-				}						
-			
-			}
-			else {
-
-				continue;
-
-			}
-		}
+	$active_tids = array();
+	$active_tids = taxonomy_node_tree_find_active_trail($tree, $vid);	
+		
+	if ($depth == 0) {
+		$extra = ' tree-root';
 	}
+	else {
+		$extra = ' tree-branch';
+	}		
+
+	$html = '<ul class="term-tree level-' . $depth . $extra . '">';
+
+	foreach($tree as $term){
+		$term_link = l($term->name, 'taxonomy/term/' . $term->tid);
+		$node_tree = $term_tree = '';		
+		$term_is_active = (in_array($term->tid, $active_tids));
+		$term_has_children = ($term->nodes && count($term->nodes));
+
+		if($term->nodes && count($term->nodes)){
+			$node_tree = '<ul class="node-tree">';
+
+			foreach($term->nodes as $node){ 								
+				$node_item_active = ($node->in_taxonomy_active_trail);					
+				$node_tree .= theme('menu_item', l($node->title, 'node/' . $node->nid), false, '', $node_item_active);
+			}
+
+			$node_tree .= '</ul>';
+		}
+
+		if($term->children && count($term->children)){
+			$options['parent'] = $term->tid;
+			$term_tree = taxonomy_node_tree_output($vid, $options, $depth + 1);
+		}
+
+		$html .= theme('menu_item', $term_link, $term_has_children, $node_tree . $term_tree, $term_is_active);
+	}
+
+	$html .= '</ul>';
+
+	return $html;	
+}
+
+/**
+ * Implements hook_block().
+ */
+function taxonomy_node_tree_block($op = 'list', $delta = NULL, $edit = NULL) {
+  $function = '_taxonomy_node_tree_block_' . $op;
+  if (function_exists($function)) {
+    return $function($delta, $edit);
+  }
+  else {
+    // "op"s besides "view" are seldom used, so we store them in a separate file.
+    module_load_include('inc', 'taxonomy_node_tree', 'includes/taxonomy_node_tree.admin');
+    if (function_exists($function)) {
+      return $function($delta, $edit);
+    }
+  }
+}
+
+/**
+ * Returns the 'view' $op info for hook_block().
+ *
+ * @param $delta
+ *   string The name of the block to render.
+ */
+function _taxonomy_node_tree_block_view($delta) {
+	$config = taxonomy_node_tree_get_config($delta);	
+
+	$parent_parts = explode('-', $config['parent']);
+	$vid = $parent_parts[0];
+	$parent = $parent_parts[1];
+
+	$options = array();
 	
-	return $taxonomy_node_tree;
+	$options['parent'] = $parent_parts[1];	
+	$options['max_depth'] = $config['max_depth'];
+	$options['node_visibility'] = $config['node_visibility'];	
+	$options['term_filters'] = $config['term_filters'];
+	$options['content_filters'] = $config['content_filters'];
+	$options['content_filter_method'] = $config['content_filter_method'];	
+	$options['collapse_inactive'] = $config['collapse_inactive'];
+	$options['delta'] = $delta;
+
+	$data = array();
+
+	$data['subject'] = $config['admin_title'];
+	$data['content'] = taxonomy_node_tree_output($vid, $options);		
+
+	return $data;
+}
+
+/**
+ * Returns the configuration for the requested block delta.
+ *
+ * @param $delta
+ *   string The delta that uniquely identifies the block in the block system. If
+ *   not specified, the default configuration will be returned.
+ * @return
+ *   array An associated array of configuration options.
+ */
+function taxonomy_node_tree_get_config($delta = NULL) {
+  $config = array(
+    'delta'       => $delta,
+    'parent' => '1-0',
+    'admin_title' => '',
+    'max_depth'       => null,		
+    'node_visibility' => 1,
+		'term_filters' => array(),	
+		'content_filters' => array(),	
+		'content_filter_method' => 'exclude',	
+		'collapse_inactive' => 0
+  );
+
+  // Get the block configuration options.
+  if ($delta) {           
+    $config['admin_title'] 	= variable_get("taxonomy_node_tree_{$delta}_admin_title", $config['admin_title']);
+    $config['max_depth']  = variable_get("taxonomy_node_tree_{$delta}_max_depth",       $config['max_depth']);
+    $config['node_visibility']   = variable_get("taxonomy_node_tree_{$delta}_node_visibility",    $config['node_visibility']);
+		$config['parent'] = variable_get("taxonomy_node_tree_{$delta}_parent",    $config['parent']);
+		$config['term_filters'] = variable_get("taxonomy_node_tree_{$delta}_term_filters",    $config['term_filters']);
+		$config['content_filters'] = variable_get("taxonomy_node_tree_{$delta}_content_filters",    $config['content_filters']);
+		$config['content_filter_method'] = variable_get("taxonomy_node_tree_{$delta}_content_filter_method",    $config['content_filter_method']);			
+		$config['collapse_inactive'] = variable_get("taxonomy_node_tree_{$delta}_collapse_inactive",    $config['collapse_inactive']);	
+  }
+
+  return $config;
 }
 
 /* Helper function */
@@ -153,21 +251,21 @@ function taxonomy_node_tree_build ( $vid , $options = array() ) {
 /* Thus, this function usefully removes the children of sub terms and gives a count of nodes for */
 /* just the current term */
 function taxonomy_node_tree_count_direct_node_children ( $tid, $vid ) {
-	$children_nodes = taxonomy_term_count_nodes($tid);
+	$children_nodes_count = taxonomy_term_count_nodes($tid);
 
 	$child_terms = taxonomy_get_children($tid, $vid);		
 
 	foreach($child_terms as $child_term){
-		$sub_children_nodes = taxonomy_term_count_nodes($child_term->tid);	
-		$children_nodes = $children_nodes - $sub_children_nodes;
+		$sub_children_nodes_count = taxonomy_term_count_nodes($child_term->tid);	
+		$children_nodes_count = $children_nodes_count - $sub_children_nodes_count;
 	}		
 
-	return $children_nodes;
+	return $children_nodes_count;
 }
 
 /* Gets the child nodes attached directly to the given taxonomy term ID ($tid) */
 /* Applies either exclusive or inclusive filters by content type, if any are set */
-function taxonomy_node_tree_get_child_nodes ( $tid, $content_filters = array() ) {
+function taxonomy_node_tree_get_term_nodes ( $tid, $content_filters = array() ) {
 	$node_children = array();
 
 	if(module_exists('draggableviews')){	
@@ -219,258 +317,30 @@ function taxonomy_node_tree_get_child_nodes ( $tid, $content_filters = array() )
 	return $node_children;
 }
 
-/* Is this function ultimately necessary? */
-function taxonomy_node_tree_get_term_page_path($tid, $delta){
-  $term_page_type = variable_get("taxonomy_node_tree_{$delta}_term_content_type", '');
-
-	if($term_page_type){
-		$term_page_result = db_query('SELECT node.nid FROM node, term_node WHERE term_node.nid = node.nid AND node.type = "%s" AND term_node.tid = "%d"', $term_page_type, $tid);
-		if(count($term_page_result)){
-			$term_page = db_fetch_array($term_page_result);
-			if($term_page){
-				return 'node/' . $term_page['nid'];
-			}
-		}	
-	}
-	else{
-		//allow other modules to define custom paths per tid
-		return end(module_invoke_all('taxonomy_node_tree_get_term_page_path', $tid));
-	}
-}
-
-/* Generates nested ul - li markup for listing children nodes and terms based on taxonomy structure */
-function taxonomy_node_tree_output ( $vid, $options, $active = null ) {	
-	$taxonomy_node_tree = array();
-
-	$taxonomy_node_tree = taxonomy_node_tree_build($vid, $options);
-
-	if(isset($active) && $active){
-		$active_nid = $active;
-	}
-	else{
-		$active_nid = taxonomy_node_tree_get_active_nid();
-	}
-
-	$node_type = db_result(db_query('SELECT type FROM node WHERE nid = "%d"', $active_nid));
-
-	$active_tids = array();
-	$active_tids = taxonomy_node_tree_find_active_trail($taxonomy_node_tree, $vid, $active_nid);
-		
-	$first = reset($taxonomy_node_tree);
-
-	//The actual depth is a zero-based value so we add one for clarity to the end user
-	$actual_depth = $first['actual_depth'] + 1;
-
-	if($actual_depth == 1){
-		$extra = ' tree-root';
-	}
-	else{
-		$extra = ' tree-branch';
-	}
-
-	$html = '<div class="taxonomy_node_tree">';
-
-	$html .= '<ul class="term-tree level-' . $actual_depth . $extra . '">';
-
-	foreach($taxonomy_node_tree as $term_parent){
-		$vocab_name = $term_parent['vocab_name'];
-
-		if($term_parent['child_nodes'] && count($term_parent['child_nodes'])){
-			$class = 'has-children';
-		}
-		else{
-			$class = 'no-children';
-		}
-
-		if(in_array($term_parent['tid'], $active_tids)){
-			$class .= ' active-trail';
-		}
-
-		$collapse = ($options['collapse_inactive']) ? ' collapse' : ' no-collapse';
-
-		$html .= '<li class="' . $class . $collapse . '">';
-
-		$term_page_path = taxonomy_node_tree_get_term_page_path($term_parent['tid'], $options['delta']);
-
-		if($term_page_path){		
-			$html .= l($term_parent['name'], url($term_page_path, array('absolute' => true)), array('attributes' => array('class' => 'active')));
-		}
-		else{
-			$html .= '<a href="#">' . $term_parent['name'] . '</a>';
-		}	
-		
-		if($term_parent['child_nodes'] && count($term_parent['child_nodes'])){
-			$html .= '<ul class="node-tree">';
-
-			foreach($term_parent['child_nodes'] as $child_node){ 				
-				$node_class = '';
-				$li_class = '';
-
-				if($child_node->in_taxonomy_active_trail){
-					$node_class = 'class = "active"';
-					$li_class = ' class = "active-node"';
-				}
-
-				$html .= '<li' . $li_class . '>';
-
-				$html .= '<a href="/' . drupal_get_path_alias('node/' . $child_node->nid) . '" ' . $node_class . '>' . $child_node->title . '</a>';
-
-				$extra_html = module_invoke_all("taxonomy_node_tree_{$child_node->type}_node_children", $child_node->nid, $active_nid);
-
-				if(count($extra_html)){
-					foreach($extra_html as $more){
-						$html .= $more;
-					}
-
-					$html .= $extra_children;
-				}
-
-				$html .= '</li>';			
-			}
-
-			$html .= '</ul>';
-		}
-
-		if($term_parent['child_terms'] && count($term_parent['child_terms'])){
-			$html .= taxonomy_node_tree_output($term_parent['child_terms'], $active_tids);
-		}
-
-		$html .= '</li>';					
-	}
-
-	$html .= '</ul>';
-
-	$active_tid = end($active_tids);
-
-	$extras = module_invoke_all('taxonomy_node_tree_output', $node_type, $active_tid);
-	
-	foreach($extras as $part){
-		$html .= $part;
-	}
-
-	$html .= '</div>';
-
-	return $html;
-	
-}
-
-/**
- * Implements hook_block().
- */
-function taxonomy_node_tree_block($op = 'list', $delta = NULL, $edit = NULL) {
-  $function = '_taxonomy_node_tree_block_' . $op;
-  if (function_exists($function)) {
-    return $function($delta, $edit);
-  }
-  else {
-    // "op"s besides "view" are seldom used, so we store them in a separate file.
-    module_load_include('inc', 'taxonomy_node_tree', 'includes/taxonomy_node_tree.admin');
-    if (function_exists($function)) {
-      return $function($delta, $edit);
-    }
-  }
-}
-
-/**
- * Returns the 'view' $op info for hook_block().
- *
- * @param $delta
- *   string The name of the block to render.
- */
-function _taxonomy_node_tree_block_view($delta) {
-	$config = taxonomy_node_tree_get_config($delta);	
-
-	$parent_parts = explode('-', $config['parent']);
-	$vid = $parent_parts[0];
-	$parent = $parent_parts[1];
-
-	$options = array();
-	
-	$options['parent'] = $parent_parts[1];
-	$options['node_visibility'] = $config['node_visibility'];	
-	$options['depth_limit'] = $config['depth_limit'];
-	$options['term_filters'] = $config['term_filters'];
-	$options['content_filters'] = $config['content_filters'];
-	$options['content_filter_method'] = $config['content_filter_method'];
-	$options['term_content_type'] = $config['term_content_type'];
-	$options['collapse_inactive'] = $config['collapse_inactive'];
-	$options['delta'] = $delta;
-
-	$data = array();
-
-	$data['subject'] = $config['admin_title'];
-	$data['content'] .= taxonomy_node_tree_output($vid, $options);	
-
-	return $data;
-}
-
-/**
- * Returns the configuration for the requested block delta.
- *
- * @param $delta
- *   string The delta that uniquely identifies the block in the block system. If
- *   not specified, the default configuration will be returned.
- * @return
- *   array An associated array of configuration options.
- */
-function taxonomy_node_tree_get_config($delta = NULL) {
-  $config = array(
-    'delta'       => $delta,
-    'parent' => '1-0',
-    'admin_title' => '',
-    'depth_limit'       => 0,
-		'node_visibility' => 1,
-		'term_filters' => array(),	
-		'content_filters' => array(),	
-		'content_filter_method' => 'exclude',
-		'term_content_type' => '',
-		'collapse_inactive' => 0
-  );
-
-  // Get the block configuration options.
-  if ($delta) {           
-    $config['admin_title'] 	= variable_get("taxonomy_node_tree_{$delta}_admin_title", $config['admin_title']);
-    $config['depth_limit']  = variable_get("taxonomy_node_tree_{$delta}_depth_limit",       $config['depth_limit']);
-		$config['parent'] = variable_get("taxonomy_node_tree_{$delta}_parent",    $config['parent']);
-		$config['node_visibility'] = variable_get("taxonomy_node_tree_{$delta}_node_visibility",    $config['node_visibility']);
-		$config['term_filters'] = variable_get("taxonomy_node_tree_{$delta}_term_filters",    $config['term_filters']);
-		$config['content_filters'] = variable_get("taxonomy_node_tree_{$delta}_content_filters",    $config['content_filters']);
-		$config['content_filter_method'] = variable_get("taxonomy_node_tree_{$delta}_content_filter_method",    $config['content_filter_method']);	
-		$config['term_content_type'] = variable_get("taxonomy_node_tree_{$delta}_term_content_type",    $config['term_content_type']);	
-		$config['collapse_inactive'] = variable_get("taxonomy_node_tree_{$delta}_collapse_inactive",    $config['collapse_inactive']);	
-  }
-
-  return $config;
-}
-
-function taxonomy_node_tree_get_active_nid(){
-	if (arg(0) == 'node' && is_numeric(arg(1))) {
-	  $active_nid = arg(1);
-	}
-	else{
-		$active_q = explode('/', $_GET['q']);
-		$active_nid = $active_q[1];
-	}
-	return $active_nid;
-}
-
 /* Provides active-trail classes based on the position of the current node in the taxonomy tree */
-function taxonomy_node_tree_find_active_trail( $taxonomy_node_tree, $vid, $active_nid ){
-	if ( !is_array($taxonomy_node_tree) ) $taxonomy_node_tree = array();
+function taxonomy_node_tree_find_active_trail( $taxonomy_node_tree, $vid ){	
+	$active_tids = array();
+	$active_nid = taxonomy_node_tree_get_active_nid();
 
 	array_walk_recursive($taxonomy_node_tree, 'taxonomy_node_tree_highlight_active_node', $active_nid);
 
 	$deepest_tid = taxonomy_node_tree_return_most_specific_node_term($active_nid, $vid);
-
-	$active_parents = taxonomy_get_parents_all($deepest_tid);
-
-	$active_tids = array();
+	$active_parents = taxonomy_get_parents_all($deepest_tid);	
 
 	foreach($active_parents as $parent){
 		$active_tids[] = $parent->tid;		
 	}
 
 	return $active_tids;
+}
+
+function taxonomy_node_tree_get_active_nid(){
+	if (arg(0) == 'node' && is_numeric(arg(1))) {
+	  $active_nid = arg(1);
+	  return $active_nid;
+	}
+
+	return null;
 }
 
 /* Wrapper function that either retuns the only term or calls for help to find the most specific term */
@@ -485,7 +355,6 @@ function taxonomy_node_tree_return_most_specific_node_term ( $nid, $vid ){
 		$tid = taxonomy_node_tree_get_most_specific_term($node, $vid);
 		return $tid;
 	}
-
 }
 
 /* If there are multiple terms for a node, the deepest term in the tree is assumed as the most specific/applicable term */
